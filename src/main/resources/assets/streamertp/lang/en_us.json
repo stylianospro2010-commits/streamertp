@@ -1,5 +1,6 @@
 {
   "key.streamertp.open_gui": "Open StreamerTP window",
   "key.streamertp.send_next": "Send /tpa to next name",
+  "key.streamertp.toggle_auto": "Toggle auto send",
   "key.category.streamertp.main": "StreamerTP"
 }

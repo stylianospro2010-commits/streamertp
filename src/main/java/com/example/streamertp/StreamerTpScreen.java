@@ -31,7 +31,8 @@ public class StreamerTpScreen extends Screen {
         int doneY = this.height - 32;
         int sliderY = this.height - 56;
         int modeY = this.height - 80;
-        navY = this.height - 104;
+        int autoY = this.height - 104;
+        navY = this.height - 128;
 
         nameField = new TextFieldWidget(this.textRenderer, cx - 115, 22, 170, 20, Text.literal("Name"));
         nameField.setMaxLength(17);
@@ -94,6 +95,13 @@ public class StreamerTpScreen extends Screen {
                     draft = nameField.getText();
                     this.clearAndInit();
                 }).dimensions(cx - 115, modeY, 230, 20).build());
+
+        this.addDrawableChild(ButtonWidget.builder(
+                Text.literal("Auto send: " + (StreamerTpClient.isAutoEnabled() ? "ON" : "OFF")), b -> {
+                    StreamerTpClient.setAuto(this.client, !StreamerTpClient.isAutoEnabled());
+                    draft = nameField.getText();
+                    this.clearAndInit();
+                }).dimensions(cx - 115, autoY, 230, 20).build());
 
         this.addDrawableChild(new CooldownSlider(cx - 115, sliderY, 230, 20));
 

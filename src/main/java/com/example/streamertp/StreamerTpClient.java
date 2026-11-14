@@ -58,6 +58,11 @@ public class StreamerTpClient implements ClientModInitializer {
 
     private static KeyBinding openGuiKey;
     private static KeyBinding sendNextKey;
+    private static KeyBinding toggleAutoKey;
+
+    /** Auto mode never sends faster than this, whatever the cooldown slider says. */
+    private static final long AUTO_MIN_MS = 1000;
+    private static boolean autoEnabled = false;
 
     @Override
     public void onInitializeClient() {
@@ -74,6 +79,11 @@ public class StreamerTpClient implements ClientModInitializer {
                 InputUtil.Type.KEYSYM,
                 GLFW.GLFW_KEY_RIGHT_BRACKET,
                 category));
+        toggleAutoKey = KeyBindingHelper.registerKeyBinding(new KeyBinding(
+                "key.streamertp.toggle_auto",
+                InputUtil.Type.KEYSYM,
+                GLFW.GLFW_KEY_BACKSLASH,
+                category));
 
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             while (openGuiKey.wasPressed()) {
@@ -83,6 +93,21 @@ public class StreamerTpClient implements ClientModInitializer {
             }
             while (sendNextKey.wasPressed()) {
                 sendNext(client);
+            }
+            while (toggleAutoKey.wasPressed()) {
+                setAuto(client, !autoEnabled);
+            }
+            if (autoEnabled) {
+                if (client.player == null) {
+                    autoEnabled = false;
+                } else if (config.names.isEmpty()) {
+                    setAuto(client, false);
+                } else {
+                    long waitMs = Math.max((long) (config.cooldownSeconds * 1000), AUTO_MIN_MS);
+                    if (System.currentTimeMillis() - lastSend >= waitMs) {
+                        sendNext(client);
+                    }
+                }
             }
         });
 
@@ -136,6 +161,12 @@ public class StreamerTpClient implements ClientModInitializer {
                                             trySend(MinecraftClient.getInstance(), StringArgumentType.getString(ctx, "name"), true);
                                             return 1;
                                         })))
+                        .then(ClientCommandManager.literal("auto")
+                                .executes(ctx -> {
+                                    setAuto(MinecraftClient.getInstance(), !autoEnabled);
+                                    ctx.getSource().sendFeedback(Text.literal("Auto send is " + (autoEnabled ? "ON" : "OFF")));
+                                    return 1;
+                                }))
                         .then(ClientCommandManager.literal("mode")
                                 .executes(ctx -> {
                                     config.hereMode = !config.hereMode;
@@ -154,6 +185,16 @@ public class StreamerTpClient implements ClientModInitializer {
 
     static double getCooldown() {
         return config.cooldownSeconds;
+    }
+
+    static boolean isAutoEnabled() {
+        return autoEnabled;
+    }
+
+    static void setAuto(MinecraftClient client, boolean on) {
+        autoEnabled = on;
+        if (on) index = 0;
+        say(client, "Auto send " + (on ? "ON (every " + Math.max(config.cooldownSeconds, AUTO_MIN_MS / 1000.0) + "s)" : "OFF"));
     }
 
     static boolean isHereMode() {
