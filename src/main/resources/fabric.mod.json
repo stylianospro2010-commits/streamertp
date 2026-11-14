@@ -3,7 +3,8 @@
   "id": "streamertp",
   "version": "1.0.0",
   "name": "StreamerTP",
-  "description": "Keybind and command helper that sends /tpa to names on your list.",
+  "description": "Keybind and command helper that sends /tpa and /tpahere to names on your list.",
+  "authors": ["samouros samouridiou"],
   "environment": "client",
   "entrypoints": {
     "client": ["com.example.streamertp.StreamerTpClient"]

@@ -46,6 +46,7 @@ public class StreamerTpClient implements ClientModInitializer {
     private static class Config {
         List<String> names = new ArrayList<>();
         double cooldownSeconds = 3.0;
+        boolean hereMode = false;
     }
 
     private static Config config = new Config();
@@ -125,9 +126,24 @@ public class StreamerTpClient implements ClientModInitializer {
                                 .then(ClientCommandManager.argument("name", StringArgumentType.word())
                                         .suggests((ctx, b) -> CommandSource.suggestMatching(config.names, b))
                                         .executes(ctx -> {
-                                            trySend(MinecraftClient.getInstance(), StringArgumentType.getString(ctx, "name"));
+                                            trySend(MinecraftClient.getInstance(), StringArgumentType.getString(ctx, "name"), false);
                                             return 1;
-                                        })))));
+                                        })))
+                        .then(ClientCommandManager.literal("sendhere")
+                                .then(ClientCommandManager.argument("name", StringArgumentType.word())
+                                        .suggests((ctx, b) -> CommandSource.suggestMatching(config.names, b))
+                                        .executes(ctx -> {
+                                            trySend(MinecraftClient.getInstance(), StringArgumentType.getString(ctx, "name"), true);
+                                            return 1;
+                                        })))
+                        .then(ClientCommandManager.literal("mode")
+                                .executes(ctx -> {
+                                    config.hereMode = !config.hereMode;
+                                    saveConfig();
+                                    ctx.getSource().sendFeedback(Text.literal(
+                                            "The send-next key now uses " + (config.hereMode ? "/tpahere" : "/tpa")));
+                                    return 1;
+                                }))));
     }
 
     // ---- shared state used by the GUI and commands ----
@@ -138,6 +154,15 @@ public class StreamerTpClient implements ClientModInitializer {
 
     static double getCooldown() {
         return config.cooldownSeconds;
+    }
+
+    static boolean isHereMode() {
+        return config.hereMode;
+    }
+
+    static void toggleHereMode() {
+        config.hereMode = !config.hereMode;
+        saveConfig();
     }
 
     static void setCooldown(double seconds) {
@@ -171,13 +196,13 @@ public class StreamerTpClient implements ClientModInitializer {
         }
         if (index >= config.names.size()) index = 0;
         String name = config.names.get(index);
-        if (trySend(client, name)) {
+        if (trySend(client, name, config.hereMode)) {
             index = (index + 1) % config.names.size();
         }
     }
 
     /** Sends /tpa <name> unless the cooldown is still running. Returns true if sent. */
-    static boolean trySend(MinecraftClient client, String name) {
+    static boolean trySend(MinecraftClient client, String name, boolean here) {
         if (client.player == null || client.player.networkHandler == null) {
             lastStatus = "Not in a world";
             return false;
@@ -191,8 +216,9 @@ public class StreamerTpClient implements ClientModInitializer {
             return false;
         }
         lastSend = now;
-        client.player.networkHandler.sendChatCommand("tpa " + name);
-        lastStatus = "Sent /tpa " + name;
+        String cmd = here ? "tpahere" : "tpa";
+        client.player.networkHandler.sendChatCommand(cmd + " " + name);
+        lastStatus = "Sent /" + cmd + " " + name;
         say(client, lastStatus);
         return true;
     }

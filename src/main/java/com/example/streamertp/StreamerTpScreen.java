@@ -9,7 +9,7 @@ import net.minecraft.text.Text;
 
 import java.util.List;
 
-/** The StreamerTP window: add/remove names, click a name to /tpa, adjust the cooldown. */
+/** The StreamerTP window: add/remove names, click /tpa or /tpahere, adjust the cooldown. */
 public class StreamerTpScreen extends Screen {
     private static final int ROW_H = 24;
     private static final int LIST_TOP = 60;
@@ -28,11 +28,12 @@ public class StreamerTpScreen extends Screen {
     @Override
     protected void init() {
         int cx = this.width / 2;
-        int doneY = this.height - 28;
-        int sliderY = this.height - 52;
-        navY = this.height - 76;
+        int doneY = this.height - 32;
+        int sliderY = this.height - 56;
+        int modeY = this.height - 80;
+        navY = this.height - 104;
 
-        nameField = new TextFieldWidget(this.textRenderer, cx - 100, 22, 150, 20, Text.literal("Name"));
+        nameField = new TextFieldWidget(this.textRenderer, cx - 115, 22, 170, 20, Text.literal("Name"));
         nameField.setMaxLength(17);
         nameField.setPlaceholder(Text.literal("Player name"));
         nameField.setText(draft);
@@ -42,7 +43,7 @@ public class StreamerTpScreen extends Screen {
             status = StreamerTpClient.addName(nameField.getText().trim());
             draft = status.startsWith("Added") ? "" : nameField.getText();
             this.clearAndInit();
-        }).dimensions(cx + 55, 22, 45, 20).build());
+        }).dimensions(cx + 60, 22, 55, 20).build());
 
         List<String> names = StreamerTpClient.names();
         int perPage = Math.max(1, (navY - 6 - LIST_TOP) / ROW_H);
@@ -55,22 +56,27 @@ public class StreamerTpScreen extends Screen {
             int y = LIST_TOP + i * ROW_H;
 
             this.addDrawableChild(ButtonWidget.builder(Text.literal("/tpa  " + name), b -> {
-                StreamerTpClient.trySend(this.client, name);
+                StreamerTpClient.trySend(this.client, name, false);
                 status = StreamerTpClient.lastStatus;
-            }).dimensions(cx - 100, y, 170, 20).build());
+            }).dimensions(cx - 115, y, 130, 20).build());
+
+            this.addDrawableChild(ButtonWidget.builder(Text.literal("/tpahere"), b -> {
+                StreamerTpClient.trySend(this.client, name, true);
+                status = StreamerTpClient.lastStatus;
+            }).dimensions(cx + 20, y, 65, 20).build());
 
             this.addDrawableChild(ButtonWidget.builder(Text.literal("X"), b -> {
                 status = StreamerTpClient.removeName(name);
                 draft = nameField.getText();
                 this.clearAndInit();
-            }).dimensions(cx + 75, y, 25, 20).build());
+            }).dimensions(cx + 90, y, 25, 20).build());
         }
 
         ButtonWidget prev = ButtonWidget.builder(Text.literal("<"), b -> {
             page--;
             draft = nameField.getText();
             this.clearAndInit();
-        }).dimensions(cx - 100, navY, 40, 20).build();
+        }).dimensions(cx - 115, navY, 40, 20).build();
         prev.active = page > 0;
         this.addDrawableChild(prev);
 
@@ -78,14 +84,21 @@ public class StreamerTpScreen extends Screen {
             page++;
             draft = nameField.getText();
             this.clearAndInit();
-        }).dimensions(cx + 60, navY, 40, 20).build();
+        }).dimensions(cx + 75, navY, 40, 20).build();
         next.active = page < pages - 1;
         this.addDrawableChild(next);
 
-        this.addDrawableChild(new CooldownSlider(cx - 100, sliderY, 200, 20));
+        this.addDrawableChild(ButtonWidget.builder(
+                Text.literal("Send-next key uses: " + (StreamerTpClient.isHereMode() ? "/tpahere" : "/tpa")), b -> {
+                    StreamerTpClient.toggleHereMode();
+                    draft = nameField.getText();
+                    this.clearAndInit();
+                }).dimensions(cx - 115, modeY, 230, 20).build());
+
+        this.addDrawableChild(new CooldownSlider(cx - 115, sliderY, 230, 20));
 
         this.addDrawableChild(ButtonWidget.builder(Text.literal("Done"), b -> this.close())
-                .dimensions(cx - 100, doneY, 200, 20).build());
+                .dimensions(cx - 115, doneY, 230, 20).build());
     }
 
     @Override
@@ -102,6 +115,8 @@ public class StreamerTpScreen extends Screen {
         }
         context.drawCenteredTextWithShadow(this.textRenderer,
                 Text.literal("Page " + (page + 1) + "/" + pages), cx, navY + 6, 0xFFAAAAAA);
+        context.drawCenteredTextWithShadow(this.textRenderer,
+                Text.literal("Created by samouros samouridiou"), cx, this.height - 10, 0xFF888888);
     }
 
     @Override
