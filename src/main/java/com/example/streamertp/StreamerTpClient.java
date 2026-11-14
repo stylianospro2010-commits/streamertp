@@ -52,7 +52,7 @@ public class StreamerTpClient implements ClientModInitializer {
         double cooldownSeconds = 3.0;
         boolean hereMode = false;
         boolean soundEnabled = true;
-        boolean onlyWhenStill = false;
+        List<String> disabled = new ArrayList<>();
     }
 
     private static Config config = new Config();
@@ -117,10 +117,8 @@ public class StreamerTpClient implements ClientModInitializer {
             if (autoEnabled) {
                 if (client.player == null) {
                     autoEnabled = false;
-                } else if (config.names.isEmpty()) {
+                } else if (config.names.isEmpty() || !anyEnabled()) {
                     setAuto(client, false);
-                } else if (config.onlyWhenStill && playerMoving) {
-                    // wait until the player stands still
                 } else {
                     long waitMs = Math.max((long) (config.cooldownSeconds * 1000), AUTO_MIN_MS);
                     if (System.currentTimeMillis() - lastSend >= waitMs) {
@@ -186,13 +184,16 @@ public class StreamerTpClient implements ClientModInitializer {
                                     ctx.getSource().sendFeedback(Text.literal("Sound is " + (config.soundEnabled ? "ON" : "OFF")));
                                     return 1;
                                 }))
-                        .then(ClientCommandManager.literal("still")
-                                .executes(ctx -> {
-                                    toggleOnlyWhenStill();
-                                    ctx.getSource().sendFeedback(Text.literal(
-                                            "Auto only while standing still: " + (config.onlyWhenStill ? "ON" : "OFF")));
-                                    return 1;
-                                }))
+                        .then(ClientCommandManager.literal("toggle")
+                                .then(ClientCommandManager.argument("name", StringArgumentType.word())
+                                        .suggests((ctx, b) -> CommandSource.suggestMatching(config.names, b))
+                                        .executes(ctx -> {
+                                            String n = StringArgumentType.getString(ctx, "name");
+                                            toggleEnabled(n);
+                                            ctx.getSource().sendFeedback(Text.literal(
+                                                    n + " is " + (isEnabled(n) ? "ON" : "OFF")));
+                                            return 1;
+                                        })))
                         .then(ClientCommandManager.literal("auto")
                                 .executes(ctx -> {
                                     setAuto(MinecraftClient.getInstance(), !autoEnabled);
@@ -233,13 +234,22 @@ public class StreamerTpClient implements ClientModInitializer {
         }
     }
 
-    static boolean isOnlyWhenStill() {
-        return config.onlyWhenStill;
+    /** A name is ON unless it was switched OFF. OFF names are skipped by auto mode and the send-next key. */
+    static boolean isEnabled(String name) {
+        return config.disabled.stream().noneMatch(d -> d.equalsIgnoreCase(name));
     }
 
-    static void toggleOnlyWhenStill() {
-        config.onlyWhenStill = !config.onlyWhenStill;
+    static void toggleEnabled(String name) {
+        if (isEnabled(name)) {
+            config.disabled.add(name);
+        } else {
+            config.disabled.removeIf(d -> d.equalsIgnoreCase(name));
+        }
         saveConfig();
+    }
+
+    static boolean anyEnabled() {
+        return config.names.stream().anyMatch(StreamerTpClient::isEnabled);
     }
 
     /** Plays the dragon growl. Skipped if sound is off or it just played. */
@@ -343,6 +353,7 @@ public class StreamerTpClient implements ClientModInitializer {
         boolean removed = config.names.removeIf(x -> x.equalsIgnoreCase(name));
         if (removed) {
             index = 0;
+            config.disabled.removeIf(d -> d.equalsIgnoreCase(name));
             saveConfig();
         }
         return removed ? "Removed " + name : name + " not found";
@@ -355,10 +366,21 @@ public class StreamerTpClient implements ClientModInitializer {
             say(client, "Name list is empty. Open the GUI to add names.");
             return;
         }
-        if (index >= config.names.size()) index = 0;
-        String name = config.names.get(index);
-        if (trySend(client, name, config.hereMode)) {
-            index = (index + 1) % config.names.size();
+        int n = config.names.size();
+        int found = -1;
+        for (int i = 0; i < n; i++) {
+            int j = (index + i) % n;
+            if (isEnabled(config.names.get(j))) {
+                found = j;
+                break;
+            }
+        }
+        if (found < 0) {
+            say(client, "All names are OFF. Switch one ON in the window.");
+            return;
+        }
+        if (trySend(client, config.names.get(found), config.hereMode)) {
+            index = (found + 1) % n;
         }
     }
 
@@ -396,6 +418,7 @@ public class StreamerTpClient implements ClientModInitializer {
             Config loaded = GSON.fromJson(r, Config.class);
             if (loaded != null) {
                 if (loaded.names == null) loaded.names = new ArrayList<>();
+                if (loaded.disabled == null) loaded.disabled = new ArrayList<>();
                 config = loaded;
                 setCooldown(config.cooldownSeconds);
             }
