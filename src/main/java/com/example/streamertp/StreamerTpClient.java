@@ -28,7 +28,6 @@ import java.util.List;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.regex.Pattern;
-import net.minecraft.client.sound.PositionedSoundInstance;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.sound.SoundEvent;
 
@@ -249,8 +248,10 @@ public class StreamerTpClient implements ClientModInitializer {
         long now = System.currentTimeMillis();
         if (now - lastSoundMs < 2000) return;
         lastSoundMs = now;
-        MinecraftClient.getInstance().getSoundManager()
-                .play(PositionedSoundInstance.master(DRAGON_SOUND, 1.0f, 0.6f));
+        MinecraftClient client = MinecraftClient.getInstance();
+        if (client.player != null) {
+            client.player.playSound(DRAGON_SOUND, 1.0f, 0.6f);
+        }
     }
 
     /** Tracks whether the player is walking, and plays the sound when you get teleported
