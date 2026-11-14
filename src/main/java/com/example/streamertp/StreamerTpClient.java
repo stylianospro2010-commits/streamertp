@@ -25,7 +25,12 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.regex.Pattern;
+import net.minecraft.client.sound.PositionedSoundInstance;
+import net.minecraft.entity.player.PlayerEntity;
+import net.minecraft.sound.SoundEvent;
 
 /**
  * StreamerTP for Minecraft 1.21.11 (Fabric, client side).
@@ -47,6 +52,8 @@ public class StreamerTpClient implements ClientModInitializer {
         List<String> names = new ArrayList<>();
         double cooldownSeconds = 3.0;
         boolean hereMode = false;
+        boolean soundEnabled = true;
+        boolean onlyWhenStill = false;
     }
 
     private static Config config = new Config();
@@ -63,6 +70,16 @@ public class StreamerTpClient implements ClientModInitializer {
     /** Auto mode never sends faster than this, whatever the cooldown slider says. */
     private static final long AUTO_MIN_MS = 1000;
     private static boolean autoEnabled = false;
+
+    // motion tracking and the "he is here" sound
+    private static boolean hasPrev = false;
+    private static Object lastWorld = null;
+    private static double prevX, prevY, prevZ;
+    private static boolean playerMoving = false;
+    private static final Set<String> nearby = new HashSet<>();
+    private static long lastSoundMs = 0;
+    private static final SoundEvent DRAGON_SOUND =
+            SoundEvent.of(Identifier.of("minecraft", "entity.ender_dragon.growl"));
 
     @Override
     public void onInitializeClient() {
@@ -97,11 +114,14 @@ public class StreamerTpClient implements ClientModInitializer {
             while (toggleAutoKey.wasPressed()) {
                 setAuto(client, !autoEnabled);
             }
+            trackMotion(client);
             if (autoEnabled) {
                 if (client.player == null) {
                     autoEnabled = false;
                 } else if (config.names.isEmpty()) {
                     setAuto(client, false);
+                } else if (config.onlyWhenStill && playerMoving) {
+                    // wait until the player stands still
                 } else {
                     long waitMs = Math.max((long) (config.cooldownSeconds * 1000), AUTO_MIN_MS);
                     if (System.currentTimeMillis() - lastSend >= waitMs) {
@@ -161,6 +181,19 @@ public class StreamerTpClient implements ClientModInitializer {
                                             trySend(MinecraftClient.getInstance(), StringArgumentType.getString(ctx, "name"), true);
                                             return 1;
                                         })))
+                        .then(ClientCommandManager.literal("sound")
+                                .executes(ctx -> {
+                                    toggleSound();
+                                    ctx.getSource().sendFeedback(Text.literal("Sound is " + (config.soundEnabled ? "ON" : "OFF")));
+                                    return 1;
+                                }))
+                        .then(ClientCommandManager.literal("still")
+                                .executes(ctx -> {
+                                    toggleOnlyWhenStill();
+                                    ctx.getSource().sendFeedback(Text.literal(
+                                            "Auto only while standing still: " + (config.onlyWhenStill ? "ON" : "OFF")));
+                                    return 1;
+                                }))
                         .then(ClientCommandManager.literal("auto")
                                 .executes(ctx -> {
                                     setAuto(MinecraftClient.getInstance(), !autoEnabled);
@@ -185,6 +218,92 @@ public class StreamerTpClient implements ClientModInitializer {
 
     static double getCooldown() {
         return config.cooldownSeconds;
+    }
+
+    static boolean isSoundEnabled() {
+        return config.soundEnabled;
+    }
+
+    /** Turns the dragon sound on or off, and plays it once when turned on. */
+    static void toggleSound() {
+        config.soundEnabled = !config.soundEnabled;
+        saveConfig();
+        if (config.soundEnabled) {
+            lastSoundMs = 0;
+            playArrivalSound();
+        }
+    }
+
+    static boolean isOnlyWhenStill() {
+        return config.onlyWhenStill;
+    }
+
+    static void toggleOnlyWhenStill() {
+        config.onlyWhenStill = !config.onlyWhenStill;
+        saveConfig();
+    }
+
+    /** Plays the dragon growl. Skipped if sound is off or it just played. */
+    static void playArrivalSound() {
+        if (!config.soundEnabled) return;
+        long now = System.currentTimeMillis();
+        if (now - lastSoundMs < 2000) return;
+        lastSoundMs = now;
+        MinecraftClient.getInstance().getSoundManager()
+                .play(PositionedSoundInstance.master(DRAGON_SOUND, 1.0f, 0.6f));
+    }
+
+    /** Tracks whether the player is walking, and plays the sound when you get teleported
+     *  or a name from your list shows up near you. */
+    private static void trackMotion(MinecraftClient client) {
+        if (client.player == null || client.world == null) {
+            hasPrev = false;
+            playerMoving = false;
+            nearby.clear();
+            return;
+        }
+        if (lastWorld != client.world) {
+            lastWorld = client.world;
+            hasPrev = false;
+            nearby.clear();
+        }
+        boolean fresh = !hasPrev;
+        double x = client.player.getX();
+        double y = client.player.getY();
+        double z = client.player.getZ();
+        if (hasPrev) {
+            double dx = x - prevX;
+            double dy = y - prevY;
+            double dz = z - prevZ;
+            playerMoving = (dx * dx + dz * dz) > 1.0E-4;
+            if (dx * dx + dy * dy + dz * dz > 64.0) {
+                playArrivalSound(); // you were teleported
+            }
+        } else {
+            playerMoving = false;
+        }
+        prevX = x;
+        prevY = y;
+        prevZ = z;
+        hasPrev = true;
+
+        Set<String> present = new HashSet<>();
+        for (PlayerEntity p : client.world.getPlayers()) {
+            if (p == client.player) continue;
+            if (p.squaredDistanceTo(client.player) > 400.0) continue;
+            String n = p.getName().getString();
+            for (String listed : config.names) {
+                if (listed.equalsIgnoreCase(n)) {
+                    String key = n.toLowerCase();
+                    present.add(key);
+                    if (!fresh && !nearby.contains(key)) {
+                        playArrivalSound(); // a name from your list arrived
+                    }
+                }
+            }
+        }
+        nearby.clear();
+        nearby.addAll(present);
     }
 
     static boolean isAutoEnabled() {

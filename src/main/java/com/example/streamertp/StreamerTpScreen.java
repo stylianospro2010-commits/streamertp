@@ -89,19 +89,35 @@ public class StreamerTpScreen extends Screen {
         next.active = page < pages - 1;
         this.addDrawableChild(next);
 
+        // Row A: auto send | sound
         this.addDrawableChild(ButtonWidget.builder(
-                Text.literal("Send-next key uses: " + (StreamerTpClient.isHereMode() ? "/tpahere" : "/tpa")), b -> {
-                    StreamerTpClient.toggleHereMode();
-                    draft = nameField.getText();
-                    this.clearAndInit();
-                }).dimensions(cx - 115, modeY, 230, 20).build());
-
-        this.addDrawableChild(ButtonWidget.builder(
-                Text.literal("Auto send: " + (StreamerTpClient.isAutoEnabled() ? "ON" : "OFF")), b -> {
+                Text.literal("Auto: " + (StreamerTpClient.isAutoEnabled() ? "ON" : "OFF")), b -> {
                     StreamerTpClient.setAuto(this.client, !StreamerTpClient.isAutoEnabled());
                     draft = nameField.getText();
                     this.clearAndInit();
-                }).dimensions(cx - 115, autoY, 230, 20).build());
+                }).dimensions(cx - 115, autoY, 112, 20).build());
+
+        this.addDrawableChild(ButtonWidget.builder(
+                Text.literal("Sound: " + (StreamerTpClient.isSoundEnabled() ? "ON" : "OFF")), b -> {
+                    StreamerTpClient.toggleSound();
+                    draft = nameField.getText();
+                    this.clearAndInit();
+                }).dimensions(cx + 3, autoY, 112, 20).build());
+
+        // Row B: only send while standing still | what the send-next key sends
+        this.addDrawableChild(ButtonWidget.builder(
+                Text.literal("Only if still: " + (StreamerTpClient.isOnlyWhenStill() ? "ON" : "OFF")), b -> {
+                    StreamerTpClient.toggleOnlyWhenStill();
+                    draft = nameField.getText();
+                    this.clearAndInit();
+                }).dimensions(cx - 115, modeY, 112, 20).build());
+
+        this.addDrawableChild(ButtonWidget.builder(
+                Text.literal("Key: " + (StreamerTpClient.isHereMode() ? "/tpahere" : "/tpa")), b -> {
+                    StreamerTpClient.toggleHereMode();
+                    draft = nameField.getText();
+                    this.clearAndInit();
+                }).dimensions(cx + 3, modeY, 112, 20).build());
 
         this.addDrawableChild(new CooldownSlider(cx - 115, sliderY, 230, 20));
 
